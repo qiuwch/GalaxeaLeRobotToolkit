@@ -1,0 +1,132 @@
+robot_type: r1pro
+arm_dof: 7
+save_video: true
+rgb_wrist_left_topic: /hdas/camera_wrist_left/color/image_raw/compressed
+rgb_wrist_right_topic: /hdas/camera_wrist_right/color/image_raw/compressed
+rgb_topics:
+- /hdas/camera_wrist_left/color/image_raw/compressed
+- /hdas/camera_wrist_right/color/image_raw/compressed
+- /hdas/camera_head/right_raw/image_raw_color/compressed
+depth_topics:
+- /hdas/camera_head/depth/depth_registered
+- /hdas/camera_wrist_left/aligned_depth_to_color/image_raw
+- /hdas/camera_wrist_right/aligned_depth_to_color/image_raw
+joint_topics:
+- /hdas/feedback_arm_left
+- /hdas/feedback_arm_right
+- /hdas/feedback_gripper_left
+- /hdas/feedback_gripper_right
+- /hdas/feedback_chassis
+- /hdas/feedback_torso
+- /motion_target/target_joint_state_arm_left
+- /motion_target/target_joint_state_arm_right
+- /motion_target/target_joint_state_torso
+pose_topics:
+- /motion_control/pose_ee_arm_left
+- /motion_control/pose_ee_arm_right
+- /motion_target/target_pose_arm_left
+- /motion_target/target_pose_arm_right
+gripper_topics:
+- /motion_target/target_position_gripper_left
+- /motion_target/target_position_gripper_right
+twist_topics:
+- /motion_target/target_speed_chassis
+control_topics:
+- /motion_control/control_arm_left
+- /motion_control/control_arm_right
+- /motion_control/control_gripper_left
+- /motion_control/control_gripper_right
+- /motion_control/control_chassis
+- /motion_control/control_torso
+imu_topics:
+- /hdas/imu_chassis
+target_topics:
+- /motion_target/target_position_gripper_left
+- /motion_target/target_position_gripper_right
+- /motion_control/pose_ee_arm_left
+- /motion_control/pose_ee_arm_right
+- /hdas/feedback_arm_left
+- /hdas/feedback_arm_right
+- /motion_target/target_joint_state_arm_left
+- /motion_target/target_joint_state_arm_right
+- /hdas/feedback_gripper_left
+- /hdas/feedback_gripper_right
+- /hdas/camera_head/left_raw/image_raw_color/compressed
+- /hdas/camera_head/right_raw/image_raw_color/compressed
+- /hdas/camera_wrist_left/color/image_raw/compressed
+- /hdas/camera_wrist_right/color/image_raw/compressed
+- /hdas/camera_head/depth/depth_registered
+- /hdas/camera_wrist_left/aligned_depth_to_color/image_raw
+- /hdas/camera_wrist_right/aligned_depth_to_color/image_raw
+- /motion_target/target_speed_chassis
+- /motion_target/target_joint_state_torso
+- /hdas/feedback_chassis
+- /hdas/imu_chassis
+- /hdas/feedback_torso
+- /motion_control/control_arm_left
+- /motion_control/control_arm_right
+- /motion_control/control_gripper_left
+- /motion_control/control_gripper_right
+- /motion_control/control_chassis
+- /motion_control/control_torso
+- /motion_target/target_pose_arm_left
+- /motion_target/target_pose_arm_right
+topic_to_key:
+  /hdas/camera_head/left_raw/image_raw_color/compressed: observation.images.head_rgb
+  /hdas/camera_head/right_raw/image_raw_color/compressed: observation.images.head_right_rgb
+  /hdas/camera_wrist_left/color/image_raw/compressed: observation.images.left_wrist_rgb
+  /hdas/camera_wrist_right/color/image_raw/compressed: observation.images.right_wrist_rgb
+  /hdas/feedback_arm_left:
+    position: observation.state.left_arm
+    velocity: observation.state.left_arm.velocities
+  /hdas/feedback_arm_right:
+    position: observation.state.right_arm
+    velocity: observation.state.right_arm.velocities
+  /hdas/feedback_gripper_left: observation.state.left_gripper
+  /hdas/feedback_gripper_right: observation.state.right_gripper
+  /hdas/imu_chassis: observation.state.chassis.imu
+  /hdas/feedback_chassis:
+    position: observation.state.chassis
+    velocity: observation.state.chassis.velocities
+  /hdas/feedback_torso:
+    position: observation.state.torso
+    velocity: observation.state.torso.velocities
+  /motion_control/pose_ee_arm_left: observation.state.left_ee_pose
+  /motion_control/pose_ee_arm_right: observation.state.right_ee_pose
+  /motion_target/target_position_gripper_left: action.left_gripper
+  /motion_target/target_position_gripper_right: action.right_gripper
+  /motion_target/target_joint_state_arm_left: action.left_arm
+  /motion_target/target_joint_state_arm_right: action.right_arm
+  /motion_target/target_speed_chassis: action.chassis.velocities
+  /motion_target/target_joint_state_torso: action.torso
+  /motion_target/target_speed_torso: action.torso.velocities
+  /motion_target/target_pose_arm_left: action.left_ee_pose
+  /motion_target/target_pose_arm_right: action.right_ee_pose
+topic_processing_type:
+  /hdas/camera_wrist_left/color/image_raw/compressed: image
+  /hdas/camera_wrist_right/color/image_raw/compressed: image
+  /hdas/camera_head/right_raw/image_raw_color/compressed: image
+  /hdas/camera_head/left_raw/image_raw_color/compressed: image
+  /hdas/feedback_arm_left: joint
+  /hdas/feedback_arm_right: joint
+  /hdas/feedback_gripper_left: joint
+  /hdas/feedback_gripper_right: joint
+  /hdas/feedback_chassis: joint
+  /hdas/feedback_torso: joint
+  /motion_target/target_joint_state_arm_left: joint
+  /motion_target/target_joint_state_arm_right: joint
+  /motion_target/target_joint_state_torso: joint
+  /motion_control/pose_ee_arm_left: pose
+  /motion_control/pose_ee_arm_right: pose
+  /motion_target/target_pose_arm_left: pose
+  /motion_target/target_pose_arm_right: pose
+  /motion_target/target_position_gripper_left: gripper
+  /motion_target/target_position_gripper_right: gripper
+  /motion_target/target_speed_chassis: twist
+  /hdas/imu_chassis: imu
+  /motion_control/control_arm_left: control
+  /motion_control/control_arm_right: control
+  /motion_control/control_gripper_left: control
+  /motion_control/control_gripper_right: control
+  /motion_control/control_chassis: control
+  /motion_control/control_torso: control

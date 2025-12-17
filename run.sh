@@ -33,8 +33,8 @@ else
 fi
 
 dataset_name=debug
-# input_dir=/Users/qiuwch/code/gym_control/asset/mcap_test
-input_dir=/Users/qiuwch/code/gym_control/asset/mcap_test/hw1217/recording_20251216_095533_@_
+input_dir=/Users/qiuwch/code/gym_control/asset/mcap_test/official
+# input_dir=/Users/qiuwch/code/gym_control/asset/mcap_test/hw1217/recording_20251216_095533_@_
 output_dir=/Users/qiuwch/code/gym_control/asset/mcap_test
 robot_type=R1Pro # options: R1Pro, R1Lite
 

@@ -1,3 +1,19 @@
+"""
+ROS2/ROS1 to LeRobot Dataset Converter
+
+This module handles the conversion of ROS bag files to LeRobot dataset format.
+
+CONFIGURATION (in topic_mapping.py):
+    - TopicMappingConfig class defines mappings between ROS2 topics and lerobot dataset keys
+    - Configures topic lists, processing types, and feature definitions
+    - Separates configuration from conversion logic for maintainability
+
+CONVERSION (this module):
+    - DataConverter class uses the configuration to perform actual conversion
+    - Extracts messages from ROS bags/mcap files
+    - Processes and transforms data according to config
+    - Creates lerobot dataset with proper feature definitions
+"""
 from sre_parse import BRANCH
 from loguru import logger
 import os
@@ -16,6 +32,13 @@ from merge_lerobot_dataset import merge_datasets
 import multiprocessing
 import cv2
 from cv_bridge import CvBridge
+from topic_mapping import (
+    TopicMappingConfig,
+    create_topic_mapping_config,
+    save_topic_mapping_config,
+    load_topic_mapping_config
+)
+
 # default: ROS 2
 USE_ROS1 = bool(int(os.getenv('USE_ROS1', 0)))
 
@@ -70,6 +93,10 @@ try:
 except Exception:
     pass
 
+# ============================================================================
+# STEP 2: CONVERSION - Use config to perform the actual conversion
+# ============================================================================
+
 class DataConverter:
     def __init__(
             self, 
@@ -77,6 +104,7 @@ class DataConverter:
             sample_mcap_path, 
             dataset_name, 
             output_dir, 
+            config: TopicMappingConfig,
             use_ros1 = False, 
             save_video = False, 
             use_h264 = False, 
@@ -106,106 +134,19 @@ class DataConverter:
 
         self.fps_dict = {}
 
-        if not self.use_ros1:
-            # check if wrist camera topic has "_rect", can be cleaned by ATC 2.1.5
-            reader = SequentialReader()
-            storage_options = StorageOptions(uri=sample_mcap_path, storage_id="mcap")
-            converter_options = ConverterOptions()
-            reader.open(storage_options, converter_options)
-            all_topics = [topic.name for topic in reader.get_all_topics_and_types()]
-            self.RGB_WRIST_LEFT_TOPIC = RGB_WRIST_LEFT_TOPIC
-            self.RGB_WRIST_RIGHT_TOPIC = RGB_WRIST_RIGHT_TOPIC
-            if self.RGB_WRIST_LEFT_TOPIC not in all_topics or self.RGB_WRIST_RIGHT_TOPIC not in all_topics:
-                self.RGB_WRIST_LEFT_TOPIC = self.RGB_WRIST_LEFT_TOPIC.replace("image_raw", "image_rect_raw")
-                self.RGB_WRIST_RIGHT_TOPIC = self.RGB_WRIST_RIGHT_TOPIC.replace("image_raw", "image_rect_raw")
-            assert self.RGB_WRIST_LEFT_TOPIC in all_topics and self.RGB_WRIST_RIGHT_TOPIC in all_topics
-        else:
-            self.RGB_WRIST_LEFT_TOPIC = RGB_WRIST_LEFT_TOPIC
-            self.RGB_WRIST_RIGHT_TOPIC = RGB_WRIST_RIGHT_TOPIC
-
-        self.RGB_TOPICS = [
-            self.RGB_WRIST_LEFT_TOPIC, 
-            self.RGB_WRIST_RIGHT_TOPIC, 
-            RGB_HEAD_RIGHT_TOPIC
-        ]
-        self.DEPTH_TOPICS = [
-            DEPTH_HEAD_TOPIC, 
-            DEPTH_LEFT_TOPIC, 
-            DEPTH_RIGHT_TOPIC
-        ]
-        self.JOINT_TOPICS = [
-            JOINT_OBS_LEFT_TOPIC, 
-            JOINT_OBS_RIGHT_TOPIC, 
-            GRIPPER_OBS_LEFT_TOPIC, 
-            GRIPPER_OBS_RIGHT_TOPIC, 
-            CHASSIS_OBS_TOPIC, 
-            TORSO_OBS_TOPIC, 
-            JOINT_ACTION_LEFT_TOPIC, 
-            JOINT_ACTION_RIGHT_TOPIC, 
-            TORSO_ACTION_TOPIC
-        ]
-        self.POSE_TOPICS = [
-            EE_POSE_OBS_LEFT_TOPIC, 
-            EE_POSE_OBS_RIGHT_TOPIC, 
-        ]
-        if self.robot_type == "r1pro":
-            self.POSE_TOPICS.append(EE_POSE_ACTION_LEFT_TOPIC)
-            self.POSE_TOPICS.append(EE_POSE_ACTION_RIGHT_TOPIC)
-        self.GRIPPER_TOPICS = [
-            GRIPPER_ACTION_LEFT_TOPIC, 
-            GRIPPER_ACTION_RIGHT_TOPIC
-        ]
-        self.TWIST_TOPICS = [CHASSIS_ACTION_TOPIC]
-        if self.robot_type == "r1lite":
-            self.TWIST_TOPICS.append(TORSO_ACTION_SPEED_TOPIC)
-        self.CONTROL_TOPICS = [
-            JOINT_CONTROL_ACTION_LEFT_TOPIC, 
-            JOINT_CONTROL_ACTION_RIGHT_TOPIC, 
-            GRIPPER_CONTROL_ACTION_LEFT_TOPIC, 
-            GRIPPER_CONTROL_ACTION_RIGHT_TOPIC, 
-            CHASSIS_CONTROL_ACTION_TOPIC, 
-            TORSO_CONTROL_ACTION_TOPIC
-        ]
-        self.IMU_TOPICS = [CHASSIS_IMU_TOPIC]
-        self.TARGET_TOPICS = {
-            GRIPPER_ACTION_LEFT_TOPIC: [],
-            GRIPPER_ACTION_RIGHT_TOPIC: [],
-            EE_POSE_OBS_LEFT_TOPIC: [],
-            EE_POSE_OBS_RIGHT_TOPIC: [],
-            JOINT_OBS_LEFT_TOPIC: [],
-            JOINT_OBS_RIGHT_TOPIC: [],
-            JOINT_ACTION_LEFT_TOPIC: [],
-            JOINT_ACTION_RIGHT_TOPIC: [],
-            GRIPPER_OBS_LEFT_TOPIC: [],
-            GRIPPER_OBS_RIGHT_TOPIC: [],
-            RGB_HEAD_LEFT_TOPIC: [],
-            RGB_HEAD_RIGHT_TOPIC: [],
-            self.RGB_WRIST_LEFT_TOPIC: [],
-            self.RGB_WRIST_RIGHT_TOPIC: [],
-            DEPTH_HEAD_TOPIC: [],
-            DEPTH_LEFT_TOPIC: [],
-            DEPTH_RIGHT_TOPIC: [],
-            CHASSIS_ACTION_TOPIC: [],
-            TORSO_ACTION_TOPIC: [],
-            CHASSIS_OBS_TOPIC: [],
-            CHASSIS_IMU_TOPIC: [],
-            TORSO_OBS_TOPIC: [],
-            JOINT_CONTROL_ACTION_LEFT_TOPIC: [],
-            JOINT_CONTROL_ACTION_RIGHT_TOPIC: [],
-            GRIPPER_CONTROL_ACTION_LEFT_TOPIC: [],
-            GRIPPER_CONTROL_ACTION_RIGHT_TOPIC: [],
-            CHASSIS_CONTROL_ACTION_TOPIC: [],
-            TORSO_CONTROL_ACTION_TOPIC: []
-        }
-        if self.robot_type == "r1pro":
-            self.TARGET_TOPICS[EE_POSE_ACTION_LEFT_TOPIC] = []
-            self.TARGET_TOPICS[EE_POSE_ACTION_RIGHT_TOPIC] = []
-        if self.robot_type == "r1lite":
-            self.TARGET_TOPICS[TORSO_ACTION_SPEED_TOPIC] = []
-        if self.robot_type == "r1pro":
-            self.arm_dof = 7
-        else:
-            self.arm_dof = 6
+        # Validate and use provided config
+        if not isinstance(config, TopicMappingConfig):
+            raise ValueError(f"Expected TopicMappingConfig instance, got {type(config)}")
+        self.config = config
+        
+        # Validate config matches robot_type
+        if self.config.robot_type != robot_type:
+            logger.warning(f"Config robot_type ({self.config.robot_type}) doesn't match provided robot_type ({robot_type})")
+        
+        # Store for backward compatibility
+        self.RGB_WRIST_LEFT_TOPIC = self.config.rgb_wrist_left_topic
+        self.RGB_WRIST_RIGHT_TOPIC = self.config.rgb_wrist_right_topic
+        self.arm_dof = self.config.arm_dof
 
     def extract(self, bag_file):
         if not self.use_ros1:
@@ -215,7 +156,7 @@ class DataConverter:
 
     def extract_ros1(self, bag_file):
         time_start = time.time()
-        extracted_msgs = {topic : [] for topic in self.TARGET_TOPICS}
+        extracted_msgs = {topic : [] for topic in self.config.target_topics}
         bag = rosbag.Bag(bag_file)
         for topic, msg, t in bag.read_messages():
             if topic in extracted_msgs.keys():
@@ -229,7 +170,7 @@ class DataConverter:
         time_start = time.time()
         mcap_name = os.path.basename(mcap_file)
         # logger.info(f"Loading {mcap_name} mcap file.")
-        extracted_msgs = {topic : [] for topic in self.TARGET_TOPICS}
+        extracted_msgs = {topic : [] for topic in self.config.target_topics}
         reader = SequentialReader()
         storage_options = StorageOptions(uri=mcap_file, storage_id="mcap")
         converter_options = ConverterOptions()
@@ -540,20 +481,20 @@ class DataConverter:
                     head_rgb_images_list.append(head_images[index_array[i]:index_array[i+1]])
                 processed_msgs[topic] = head_rgb_images_list
 
-            elif topic in self.RGB_TOPICS:
+            elif topic in self.config.rgb_topics:
                 bridge = CvBridge()
                 wrist_rgb_images_list = []
                 first_image_shape = bridge.compressed_imgmsg_to_cv2(data[0]).shape
-                if topic == RGB_WRIST_LEFT_TOPIC:
+                if topic == self.config.rgb_topics[0]:  # left wrist
                     self.shape_of_images["WRIST_LEFT_RGB"] = first_image_shape
-                if topic == RGB_WRIST_RIGHT_TOPIC:
+                if topic == self.config.rgb_topics[1]:  # right wrist
                     self.shape_of_images["WRIST_RIGHT_RGB"] = first_image_shape
                 aligned_wrist_rgb_images = self.align_rgb(head_rgb_timestamps, data)
                 for i in range(len(index_array) - 1):
                     wrist_rgb_images_list.append(aligned_wrist_rgb_images[index_array[i]:index_array[i+1]])
                 processed_msgs[topic] = wrist_rgb_images_list
                 
-            elif topic in self.JOINT_TOPICS:
+            elif topic in self.config.joint_topics:
                 timestamps = []
                 positions = []
                 velocities = []
@@ -576,7 +517,7 @@ class DataConverter:
                     joint_dict_list.append(joint_dict)
                 processed_msgs[topic] = joint_dict_list
             
-            elif topic in self.POSE_TOPICS:
+            elif topic in self.config.pose_topics:
                 pose_transforms = []
                 pose_timestamps = []
                 for msg in data:
@@ -596,7 +537,7 @@ class DataConverter:
                 
                 processed_msgs[topic] = pose_list
 
-            elif topic in self.GRIPPER_TOPICS:
+            elif topic in self.config.gripper_topics:
                 timestamps = []
                 positions = []
                 gripper_list = []
@@ -613,7 +554,7 @@ class DataConverter:
                     gripper_list.append(positions[index_array[i]:index_array[i+1]])                
                 processed_msgs[topic] = gripper_list
 
-            elif topic in self.TWIST_TOPICS:
+            elif topic in self.config.twist_topics:
                 timestamps = []
                 velocities = []
                 for msg in data:
@@ -639,7 +580,7 @@ class DataConverter:
                 
                 processed_msgs[topic] = velocity_list
             
-            elif topic in self.IMU_TOPICS:
+            elif topic in self.config.imu_topics:
                 timestamps = []
                 imu = []
                 imu_transforms = []
@@ -669,7 +610,7 @@ class DataConverter:
                 
                 processed_msgs[topic] = imu_list
 
-            elif topic in self.CONTROL_TOPICS:
+            elif topic in self.config.control_topics:
                 timestamps = []
                 positions = []
                 velocities = []
@@ -759,45 +700,48 @@ class DataConverter:
 
     
     def create_episode(self, processed_dataset):
+        """Create episode frames using config mappings."""
         episode = []
         for i in range(len(processed_dataset[RGB_HEAD_LEFT_TOPIC][0])):
             frame = {}
-            frame["observation.images.head_rgb"] = processed_dataset[RGB_HEAD_LEFT_TOPIC][0][i]
-            frame["observation.images.head_right_rgb"] = processed_dataset[RGB_HEAD_RIGHT_TOPIC][0][i]
-            frame["observation.images.left_wrist_rgb"] = processed_dataset[self.RGB_WRIST_LEFT_TOPIC][0][i]
-            frame["observation.images.right_wrist_rgb"] = processed_dataset[self.RGB_WRIST_RIGHT_TOPIC][0][i]
             
-            frame["observation.state.left_arm"] = processed_dataset[JOINT_OBS_LEFT_TOPIC][0]["position"][i][0: self.arm_dof]
-            frame["observation.state.left_arm.velocities"] = processed_dataset[JOINT_OBS_LEFT_TOPIC][0]["velocity"][i][0: self.arm_dof]
-            frame["observation.state.right_arm"] = processed_dataset[JOINT_OBS_RIGHT_TOPIC][0]["position"][i][0: self.arm_dof]
-            frame["observation.state.right_arm.velocities"] = processed_dataset[JOINT_OBS_RIGHT_TOPIC][0]["velocity"][i][0: self.arm_dof]
-            frame["observation.state.left_gripper"] = processed_dataset[GRIPPER_OBS_LEFT_TOPIC][0]["position"][i]
-            frame["observation.state.right_gripper"] = processed_dataset[GRIPPER_OBS_RIGHT_TOPIC][0]["position"][i]
-            frame["observation.state.chassis.imu"] = processed_dataset[CHASSIS_IMU_TOPIC][0][i]
-            frame["observation.state.chassis"] = processed_dataset[CHASSIS_OBS_TOPIC][0]['position'][i][0:3]
+            # Use config to get lerobot keys
+            frame[self.config.get_lerobot_key(RGB_HEAD_LEFT_TOPIC)] = processed_dataset[RGB_HEAD_LEFT_TOPIC][0][i]
+            frame[self.config.get_lerobot_key(RGB_HEAD_RIGHT_TOPIC)] = processed_dataset[RGB_HEAD_RIGHT_TOPIC][0][i]
+            frame[self.config.get_lerobot_key(self.RGB_WRIST_LEFT_TOPIC)] = processed_dataset[self.RGB_WRIST_LEFT_TOPIC][0][i]
+            frame[self.config.get_lerobot_key(self.RGB_WRIST_RIGHT_TOPIC)] = processed_dataset[self.RGB_WRIST_RIGHT_TOPIC][0][i]
+            
+            frame[self.config.get_lerobot_key(JOINT_OBS_LEFT_TOPIC, "position")] = processed_dataset[JOINT_OBS_LEFT_TOPIC][0]["position"][i][0: self.config.arm_dof]
+            frame[self.config.get_lerobot_key(JOINT_OBS_LEFT_TOPIC, "velocity")] = processed_dataset[JOINT_OBS_LEFT_TOPIC][0]["velocity"][i][0: self.config.arm_dof]
+            frame[self.config.get_lerobot_key(JOINT_OBS_RIGHT_TOPIC, "position")] = processed_dataset[JOINT_OBS_RIGHT_TOPIC][0]["position"][i][0: self.config.arm_dof]
+            frame[self.config.get_lerobot_key(JOINT_OBS_RIGHT_TOPIC, "velocity")] = processed_dataset[JOINT_OBS_RIGHT_TOPIC][0]["velocity"][i][0: self.config.arm_dof]
+            frame[self.config.get_lerobot_key(GRIPPER_OBS_LEFT_TOPIC)] = processed_dataset[GRIPPER_OBS_LEFT_TOPIC][0]["position"][i]
+            frame[self.config.get_lerobot_key(GRIPPER_OBS_RIGHT_TOPIC)] = processed_dataset[GRIPPER_OBS_RIGHT_TOPIC][0]["position"][i]
+            frame[self.config.get_lerobot_key(CHASSIS_IMU_TOPIC)] = processed_dataset[CHASSIS_IMU_TOPIC][0][i]
+            frame[self.config.get_lerobot_key(CHASSIS_OBS_TOPIC, "position")] = processed_dataset[CHASSIS_OBS_TOPIC][0]['position'][i][0:3]
             # FIXME: The feedback for the chassis provides a 6-dim velocity, 
             # but only the first 3 dims are valid. The last 3 dims do not change.
-            frame["observation.state.chassis.velocities"] = processed_dataset[CHASSIS_OBS_TOPIC][0]['velocity'][i][0:3]
-            frame["observation.state.torso"] = processed_dataset[TORSO_OBS_TOPIC][0]["position"][i]
-            frame["observation.state.torso.velocities"] = processed_dataset[TORSO_OBS_TOPIC][0]["velocity"][i]
-            frame["observation.state.left_ee_pose"] = processed_dataset[EE_POSE_OBS_LEFT_TOPIC][0][i]
-            frame["observation.state.right_ee_pose"] = processed_dataset[EE_POSE_OBS_RIGHT_TOPIC][0][i]
+            frame[self.config.get_lerobot_key(CHASSIS_OBS_TOPIC, "velocity")] = processed_dataset[CHASSIS_OBS_TOPIC][0]['velocity'][i][0:3]
+            frame[self.config.get_lerobot_key(TORSO_OBS_TOPIC, "position")] = processed_dataset[TORSO_OBS_TOPIC][0]["position"][i]
+            frame[self.config.get_lerobot_key(TORSO_OBS_TOPIC, "velocity")] = processed_dataset[TORSO_OBS_TOPIC][0]["velocity"][i]
+            frame[self.config.get_lerobot_key(EE_POSE_OBS_LEFT_TOPIC)] = processed_dataset[EE_POSE_OBS_LEFT_TOPIC][0][i]
+            frame[self.config.get_lerobot_key(EE_POSE_OBS_RIGHT_TOPIC)] = processed_dataset[EE_POSE_OBS_RIGHT_TOPIC][0][i]
             
-            if self.robot_type == "r1pro":
-                frame["action.left_ee_pose"] = processed_dataset[EE_POSE_ACTION_LEFT_TOPIC][0][i]
-                frame["action.right_ee_pose"] = processed_dataset[EE_POSE_ACTION_RIGHT_TOPIC][0][i]
+            if self.config.robot_type == "r1pro":
+                frame[self.config.get_lerobot_key(EE_POSE_ACTION_LEFT_TOPIC)] = processed_dataset[EE_POSE_ACTION_LEFT_TOPIC][0][i]
+                frame[self.config.get_lerobot_key(EE_POSE_ACTION_RIGHT_TOPIC)] = processed_dataset[EE_POSE_ACTION_RIGHT_TOPIC][0][i]
             
-            frame["action.left_gripper"] = processed_dataset[GRIPPER_ACTION_LEFT_TOPIC][0][i]
-            frame["action.right_gripper"] = processed_dataset[GRIPPER_ACTION_RIGHT_TOPIC][0][i]
-            frame["action.left_arm"] = processed_dataset[JOINT_ACTION_LEFT_TOPIC][0]["position"][i]
-            frame["action.right_arm"] = processed_dataset[JOINT_ACTION_RIGHT_TOPIC][0]["position"][i]
-            frame["action.chassis.velocities"] = processed_dataset[CHASSIS_ACTION_TOPIC][0][i]
+            frame[self.config.get_lerobot_key(GRIPPER_ACTION_LEFT_TOPIC)] = processed_dataset[GRIPPER_ACTION_LEFT_TOPIC][0][i]
+            frame[self.config.get_lerobot_key(GRIPPER_ACTION_RIGHT_TOPIC)] = processed_dataset[GRIPPER_ACTION_RIGHT_TOPIC][0][i]
+            frame[self.config.get_lerobot_key(JOINT_ACTION_LEFT_TOPIC)] = processed_dataset[JOINT_ACTION_LEFT_TOPIC][0]["position"][i]
+            frame[self.config.get_lerobot_key(JOINT_ACTION_RIGHT_TOPIC)] = processed_dataset[JOINT_ACTION_RIGHT_TOPIC][0]["position"][i]
+            frame[self.config.get_lerobot_key(CHASSIS_ACTION_TOPIC)] = processed_dataset[CHASSIS_ACTION_TOPIC][0][i]
             
             # only R1 Pro with whole-body control has torso joint action, while R1 Lite still uses torso speed control
-            if self.robot_type == "r1pro" and len(processed_dataset[TORSO_ACTION_TOPIC][0]["position"]) > 0:
-                frame["action.torso"] = processed_dataset[TORSO_ACTION_TOPIC][0]["position"][i]
-            if self.robot_type == "r1lite" and len(processed_dataset[TORSO_ACTION_SPEED_TOPIC][0]) > 0:
-                frame["action.torso.velocities"] = processed_dataset[TORSO_ACTION_SPEED_TOPIC][0][i]
+            if self.config.robot_type == "r1pro" and len(processed_dataset[TORSO_ACTION_TOPIC][0]["position"]) > 0:
+                frame[self.config.get_lerobot_key(TORSO_ACTION_TOPIC)] = processed_dataset[TORSO_ACTION_TOPIC][0]["position"][i]
+            if self.config.robot_type == "r1lite" and len(processed_dataset[TORSO_ACTION_SPEED_TOPIC][0]) > 0:
+                frame[self.config.get_lerobot_key(TORSO_ACTION_SPEED_TOPIC)] = processed_dataset[TORSO_ACTION_SPEED_TOPIC][0][i]
 
             episode.append(frame)
         
@@ -1032,11 +976,21 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f'Error writing {training_data_set_meta_file}, {e}')
 
+    # Create configuration mapping
+    config = create_topic_mapping_config(
+        robot_type=robot_type,
+        sample_mcap_path=sample_mcap_path,
+        use_ros1=USE_ROS1,
+        save_video=SAVE_VIDEO
+    )
+    save_topic_mapping_config(config, os.path.join(output_dir, "topic_mapping.yaml"))
+
     data_converter = DataConverter(
         robot_type, 
         sample_mcap_path, 
         dataset_name, 
         output_dir, 
+        config=config,
         use_ros1=USE_ROS1, 
         save_video=SAVE_VIDEO, 
         use_h264=USE_H264, 
