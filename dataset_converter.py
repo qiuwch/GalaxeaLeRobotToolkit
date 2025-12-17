@@ -18,6 +18,27 @@ import cv2
 from cv_bridge import CvBridge
 # default: ROS 2
 USE_ROS1 = bool(int(os.getenv('USE_ROS1', 0)))
+
+# Import ROS2 modules at module level for multiprocessing compatibility
+# These imports are needed in spawned processes, so they must be at module level
+try:
+    import rclpy
+    from rclpy.serialization import deserialize_message
+    from rosbag2_py import SequentialReader, StorageOptions, ConverterOptions
+except ImportError:
+    # ROS2 modules not available, will use ROS1 instead
+    rclpy = None
+    deserialize_message = None
+    SequentialReader = None
+    StorageOptions = None
+    ConverterOptions = None
+
+# Import ROS1 modules at module level for multiprocessing compatibility
+# These imports are also needed in spawned processes
+try:
+    import rosbag
+except ImportError:
+    rosbag = None
 # default: mp4 video
 SAVE_VIDEO = bool(int(os.getenv('SAVE_VIDEO', 1)))
 # default: AV1 codec
@@ -493,7 +514,15 @@ class DataConverter:
         mcap_path = mcap_info["path"]
         processed_msgs = self.extract(mcap_path)
         head_rgb_timestamps = np.array([self.msg_to_timestamp(msg) for msg in processed_msgs[RGB_HEAD_LEFT_TOPIC]])
-        fps = int(np.round(1.0 / np.median(head_rgb_timestamps[1:] - head_rgb_timestamps[:-1])))
+        timestamp_diffs = head_rgb_timestamps[1:] - head_rgb_timestamps[:-1]
+        median_diff = np.median(timestamp_diffs)
+        
+        if median_diff == 0 or abs(median_diff) < 1e-10:
+            logger.warning(f'Divide by zero detected when computing FPS for mcap_path={mcap_path}: median timestamp difference is {median_diff}. Setting FPS to -1.')
+            fps = -1
+        else:
+            fps = int(np.round(1.0 / median_diff))
+        
         self.fps_dict[str(idx)] = fps
         index_array = np.array([0, len(head_rgb_timestamps)])
 
@@ -714,10 +743,10 @@ class DataConverter:
         if len(episode) != 0:
             time_start = time.time()
             for frame, description, quality in zip(episode, framewise_descriptions, framewise_quality):
-                lerobot_dataset.add_frame(
-                    frame=frame,
-                    task=episode_description#[episode_description, description, quality],
-                )
+                # Note: lerobot 0.4.2 API - add_frame only accepts 'frame' parameter
+                # Task information is not supported in this version
+                frame["task"] = episode_description
+                lerobot_dataset.add_frame(frame=frame)
             time_end = time.time()
             logger.info(f"add_frame time: {time_end - time_start} seconds")
             time_start = time.time()
@@ -986,16 +1015,11 @@ if __name__ == '__main__':
         USE_ROS1 = False
 
     if not USE_ROS1:
-        import rclpy
-        from rclpy.serialization import deserialize_message
-        from rosbag2_py import SequentialReader, StorageOptions, ConverterOptions
-        logger.info(f"Use ROS1")
-    else:
-        import rosbag
         logger.info(f"Use ROS2")
-
-    if not USE_ROS1:
-        rclpy.init()
+        if rclpy is not None:
+            rclpy.init()
+    else:
+        logger.info(f"Use ROS1")
 
     if robot_type not in ['r1pro', 'r1', 'r1lite']:
         logger.error(f'Unknown robot type: {robot_type}')
@@ -1025,5 +1049,5 @@ if __name__ == '__main__':
     # 2. process messages.
     data_converter.process_all(mcaps_dict)
 
-    if not USE_ROS1:    
+    if not USE_ROS1 and rclpy is not None:
         rclpy.shutdown()
